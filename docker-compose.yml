@@ -9,10 +9,11 @@ services:
         - CMD
         - python
         - -c
-        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=2)"
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2)"
       interval: 2s
       timeout: 3s
       retries: 30
+      start_period: 5s
     ports:
       - "${API_PORT:-8000}:8000"
 
@@ -23,10 +24,13 @@ services:
       api:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost/"]
+      # 使用 IPv4 字面量与专用健康端点：localhost 在容器内可能解析到 ::1，
+      # 而 nginx 仅监听 IPv4，busybox wget 的地址回退行为不可靠
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1/__health"]
       interval: 2s
       timeout: 3s
       retries: 30
+      start_period: 5s
     ports:
       - "${WEB_PORT:-8080}:80"
 

@@ -79,7 +79,9 @@
 
 ### `GET /api/health`
 
-返回 `{"status": "ok"}`，用于容器健康检查。
+返回 `{"status": "ok"}`，用于 api 容器健康检查。前端容器另有
+`GET /__health`（nginx 直接返回 200，不依赖静态文件与代理），用于 web
+服务健康检查。
 
 ## 架构与启动（Docker Compose）
 
