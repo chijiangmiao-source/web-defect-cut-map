@@ -1,0 +1,218 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  background: #f4f6f8;
+  color: #2c3e50;
+}
+
+.page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+h1 {
+  font-size: 22px;
+  margin-bottom: 8px;
+}
+
+.hint {
+  color: #5f6b7a;
+  font-size: 13px;
+  margin-top: 0;
+}
+
+.defect-form {
+  background: #fff;
+  border: 1px solid #dde3ea;
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.field label {
+  font-weight: 600;
+}
+
+.range-hint,
+.empty-hint {
+  color: #8a94a3;
+  font-size: 12px;
+}
+
+input[type="text"] {
+  padding: 6px 8px;
+  border: 1px solid #c4ccd6;
+  border-radius: 4px;
+  width: 140px;
+  font-size: 14px;
+}
+
+.defects {
+  border: 1px dashed #c4ccd6;
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.defects legend {
+  font-weight: 600;
+  font-size: 13px;
+  padding: 0 6px;
+}
+
+.defect-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  margin-bottom: 6px;
+}
+
+.defect-row.invalid {
+  background: #fdecea;
+  outline: 1px solid #c0392b;
+}
+
+.defect-row label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.defect-row input {
+  width: 110px;
+}
+
+.row-index {
+  font-size: 12px;
+  color: #5f6b7a;
+  width: 48px;
+}
+
+button {
+  cursor: pointer;
+  border-radius: 4px;
+  border: 1px solid #c4ccd6;
+  background: #fff;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+button.add {
+  border-style: dashed;
+}
+
+button.remove {
+  color: #c0392b;
+}
+
+button.submit {
+  background: #2e9e5b;
+  border-color: #2e9e5b;
+  color: #fff;
+  font-size: 15px;
+  padding: 10px;
+}
+
+button.submit:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.error-banner {
+  margin-top: 14px;
+  background: #fdecea;
+  border: 1px solid #c0392b;
+  color: #922b21;
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 14px;
+}
+
+.result {
+  margin-top: 20px;
+  background: #fff;
+  border: 1px solid #dde3ea;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.result h2 {
+  font-size: 17px;
+  margin-top: 0;
+}
+
+.roll-bar svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.legend {
+  display: flex;
+  gap: 18px;
+  font-size: 12px;
+  color: #5f6b7a;
+  margin-top: 6px;
+}
+
+.legend-item i {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  margin-right: 4px;
+  vertical-align: -1px;
+}
+
+.summary {
+  font-size: 14px;
+  margin: 12px 0;
+}
+
+.segment-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.segment-table th,
+.segment-table td {
+  border: 1px solid #dde3ea;
+  padding: 6px 10px;
+  text-align: right;
+}
+
+.segment-table th:first-child,
+.segment-table td:first-child,
+.segment-table th:last-child,
+.segment-table td:last-child {
+  text-align: center;
+}
+
+.segment-table thead {
+  background: #eef2f6;
+}
+
+.category.cuttable {
+  color: #1e7e44;
+  font-weight: 600;
+}
+
+.category.waste {
+  color: #6b7280;
+}
