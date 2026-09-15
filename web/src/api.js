@@ -1,14 +1,18 @@
 /**
  * 调用真实 FastAPI 接口。表单中的原始字符串原样提交，
  * 整数解析与边界校验全部在服务端完成。
+ *
+ * feedDirection 为 "original"（原向，默认）或 "reversed"（调头），
+ * 两种方向都携带同一卷长与同一份缺陷重新请求。
  */
-export async function fetchPlan(rollLength, defects) {
+export async function fetchPlan(rollLength, defects, feedDirection = "original") {
   const response = await fetch("/api/plan", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       roll_length: rollLength,
       defects: defects.map((d) => ({ start: d.start, end: d.end })),
+      feed_direction: feedDirection,
     }),
   });
   let data = null;

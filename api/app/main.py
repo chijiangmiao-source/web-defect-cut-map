@@ -3,7 +3,9 @@
 POST /api/plan  接收卷长与缺陷列表（允许数字或纯数字字符串），整批校验：
 - 卷长为 1..100000 的整数；
 - 每条缺陷满足 0 <= start < end <= 卷长，且均为整数；
-- 任一行含非整数、倒置或越界值时整批拒绝，返回 422 与首个问题行。
+- feed_direction 仅接受 original（原向，默认）或 reversed（调头）；
+- 任一行含非整数、倒置或越界值时整批拒绝，返回 422 与首个问题行；
+  feed_direction 不受支持时同样返回 422。
 GET  /api/health 健康检查。
 """
 
@@ -12,7 +14,7 @@ import re
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from .planner import build_plan
+from .planner import FEED_DIRECTIONS, FEED_ORIGINAL, build_plan
 
 ROLL_LENGTH_MIN = 1
 ROLL_LENGTH_MAX = 100000
@@ -81,7 +83,20 @@ def validate_payload(payload):
                 row,
             )
         defects.append((start, end))
-    return roll_length, defects
+
+    # feed_direction 仅在缺省时按原向返回（兼容旧客户端）；
+    # 字段一旦给出（含 null），就必须是受支持的取值，否则明确拒绝。
+    if "feed_direction" not in payload:
+        feed_direction = FEED_ORIGINAL
+    else:
+        feed_direction = payload["feed_direction"]
+        if not isinstance(feed_direction, str) or feed_direction not in FEED_DIRECTIONS:
+            supported = " / ".join(repr(value) for value in FEED_DIRECTIONS)
+            raise InputError(
+                "feed_direction",
+                f"进料方向仅支持 {supported}，收到 {feed_direction!r}",
+            )
+    return roll_length, defects, feed_direction
 
 
 app = FastAPI(title="卷材缺陷避让裁切 API")
@@ -102,7 +117,7 @@ def health():
 @app.post("/api/plan")
 def create_plan(payload: dict = Body(...)):
     try:
-        roll_length, defects = validate_payload(payload)
+        roll_length, defects, feed_direction = validate_payload(payload)
     except InputError as exc:
         raise HTTPException(
             status_code=422,
@@ -113,4 +128,4 @@ def create_plan(payload: dict = Body(...)):
                 "message": exc.message,
             },
         ) from exc
-    return build_plan(roll_length, defects)
+    return build_plan(roll_length, defects, feed_direction)

@@ -5,6 +5,7 @@ import SegmentTable from "../components/SegmentTable";
 
 const PLAN = {
   roll_length: 500,
+  feed_direction: "original",
   expand_mm: 15,
   min_cuttable_mm: 200,
   expanded_defects: [{ start: 185, end: 215 }],
@@ -20,6 +21,17 @@ const PLAN = {
     cuttable_length: 285,
     waste_length: 185,
   },
+};
+
+const PLAN_REVERSED = {
+  ...PLAN,
+  feed_direction: "reversed",
+  expanded_defects: [{ start: 285, end: 315 }],
+  merged_defects: [{ start: 285, end: 315 }],
+  segments: [
+    { start: 0, end: 285, length: 285, category: "cuttable" },
+    { start: 315, end: 500, length: 185, category: "waste" },
+  ],
 };
 
 describe("RollBar", () => {
@@ -49,6 +61,23 @@ describe("RollBar", () => {
       parseFloat(defects[0].getAttribute("x")) +
       parseFloat(defects[0].getAttribute("width"));
     expect(defectEnd).toBeCloseTo(parseFloat(segments[1].getAttribute("x")));
+  });
+
+  it("调头时按进料端坐标翻转图形与首/尾标识", () => {
+    render(<RollBar plan={PLAN_REVERSED} />);
+    expect(screen.getByTestId("roll-bar")).toHaveAttribute(
+      "data-direction",
+      "reversed"
+    );
+    const segments = screen.getAllByTestId("segment-rect");
+    expect(segments[0]).toHaveAttribute("x", "0");
+    expect(segments[0]).toHaveAttribute("width", "570");
+    expect(segments[1]).toHaveAttribute("x", "630");
+    expect(segments[1]).toHaveAttribute("width", "370");
+    expect(screen.getByTestId("defect-rect")).toHaveAttribute("x", "570");
+
+    expect(screen.getByTestId("feed-end-label")).toHaveTextContent("卷材尾");
+    expect(screen.getByTestId("tail-end-label")).toHaveTextContent("卷材头");
   });
 });
 

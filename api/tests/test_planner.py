@@ -1,13 +1,17 @@
-"""核心算法单元测试：扩张、截断、合并、补集、分类。"""
+"""核心算法单元测试：扩张、截断、合并、补集、分类与调头镜像。"""
 
 from app.planner import (
     CATEGORY_CUTTABLE,
     CATEGORY_WASTE,
+    FEED_ORIGINAL,
+    FEED_REVERSED,
     build_plan,
     classify,
     complement_intervals,
     expand_defects,
     merge_intervals,
+    reverse_interval,
+    reverse_plan,
 )
 
 
@@ -138,3 +142,80 @@ class TestBuildPlan:
         plan = build_plan(100, [(0, 100)])
         assert plan["segments"] == []
         assert plan["summary"]["segment_count"] == 0
+
+
+class TestReverse:
+    def test_reverse_interval_mirrors_around_roll_center(self):
+        assert reverse_interval(100, 200, 1000) == (800, 900)
+        assert reverse_interval(0, 50, 1000) == (950, 1000)
+        assert reverse_interval(950, 1000, 1000) == (0, 50)
+        # 区间长度保持不变
+        start, end = reverse_interval(123, 456, 1000)
+        assert end - start == 333
+
+    def test_asymmetric_defects_exact_reversed_coordinates_and_order(self):
+        plan = build_plan(
+            1000, [(100, 150), (300, 320)], feed_direction=FEED_REVERSED
+        )
+        # 扩张缺陷镜像后按新坐标升序
+        assert plan["expanded_defects"] == [
+            {"start": 665, "end": 715},
+            {"start": 835, "end": 915},
+        ]
+        assert plan["merged_defects"] == [
+            {"start": 665, "end": 715},
+            {"start": 835, "end": 915},
+        ]
+        # 区段镜像并整体倒置：可裁段从原向的卷尾转到调头后的卷首
+        assert plan["segments"] == [
+            {"start": 0, "end": 665, "length": 665, "category": "cuttable"},
+            {"start": 715, "end": 835, "length": 120, "category": "waste"},
+            {"start": 915, "end": 1000, "length": 85, "category": "waste"},
+        ]
+        assert plan["feed_direction"] == FEED_REVERSED
+
+    def test_reversed_keeps_lengths_categories_and_summary(self):
+        original = build_plan(1000, [(100, 150), (300, 320)])
+        reversed_ = build_plan(
+            1000, [(100, 150), (300, 320)], feed_direction=FEED_REVERSED
+        )
+        for key in ("segments", "expanded_defects", "merged_defects"):
+            orig_spans = sorted(item["end"] - item["start"] for item in original[key])
+            rev_spans = sorted(item["end"] - item["start"] for item in reversed_[key])
+            assert orig_spans == rev_spans
+        assert [s["category"] for s in reversed_["segments"]] != [
+            s["category"] for s in original["segments"]
+        ]
+        assert reversed_["summary"] == original["summary"]
+
+    def test_reverse_is_involution(self):
+        # 调头两次应回到原向坐标
+        original = build_plan(1000, [(100, 150), (300, 320)])
+        reversed_ = build_plan(
+            1000, [(100, 150), (300, 320)], feed_direction=FEED_REVERSED
+        )
+        assert reverse_plan(reversed_)["segments"] == original["segments"]
+        assert reverse_plan(reversed_)["expanded_defects"] == original["expanded_defects"]
+
+    def test_symmetric_defect_keeps_interval_but_segments_reorder(self):
+        # 缺陷位于卷材正中：扩张区间 [385,615] 关于卷中心对称，镜像后不变
+        plan = build_plan(1000, [(400, 600)], feed_direction=FEED_REVERSED)
+        assert plan["merged_defects"] == [{"start": 385, "end": 615}]
+        assert plan["segments"] == [
+            {"start": 0, "end": 385, "length": 385, "category": "cuttable"},
+            {"start": 615, "end": 1000, "length": 385, "category": "cuttable"},
+        ]
+
+    def test_empty_and_full_coverage_rolls(self):
+        empty = build_plan(1000, [], feed_direction=FEED_REVERSED)
+        assert empty["segments"] == [
+            {"start": 0, "end": 1000, "length": 1000, "category": "cuttable"}
+        ]
+        assert empty["feed_direction"] == FEED_REVERSED
+
+        full = build_plan(100, [(0, 100)], feed_direction=FEED_REVERSED)
+        assert full["segments"] == []
+        assert full["merged_defects"] == [{"start": 0, "end": 100}]
+
+    def test_default_direction_is_original(self):
+        assert build_plan(1000, [])["feed_direction"] == FEED_ORIGINAL

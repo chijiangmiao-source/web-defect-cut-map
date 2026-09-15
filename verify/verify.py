@@ -148,14 +148,77 @@ def main():
                     "defects": [{"start": 0, "end": 1001}]}, 1, "end"),
     ))
 
+    def check_reversed_direction():
+        # 非对称缺陷调头：每个区间镜像为 [卷长-end, 卷长-start]，并按新坐标升序
+        payload = {"roll_length": 1000,
+                   "defects": [{"start": 100, "end": 150},
+                               {"start": 300, "end": 320}]}
+        resp = post_plan(API_BASE, {**payload, "feed_direction": "reversed"})
+        assert resp.status_code == 200, f"期望 200，实际 {resp.status_code}: {resp.text}"
+        body = resp.json()
+        assert body["feed_direction"] == "reversed", body
+        assert body["expanded_defects"] == [
+            {"start": 665, "end": 715}, {"start": 835, "end": 915}], body
+        assert body["merged_defects"] == [
+            {"start": 665, "end": 715}, {"start": 835, "end": 915}], body
+        assert body["segments"] == [
+            {"start": 0, "end": 665, "length": 665, "category": "cuttable"},
+            {"start": 715, "end": 835, "length": 120, "category": "waste"},
+            {"start": 915, "end": 1000, "length": 85, "category": "waste"},
+        ], body
+        # 长度、类别与汇总值保持不变
+        assert body["summary"] == {
+            "segment_count": 3, "cuttable_count": 1, "waste_count": 2,
+            "cuttable_length": 665, "waste_length": 205,
+        }, body
+
+        # 显式原向与省略字段（旧客户端）结果一致
+        original = post_plan(API_BASE, payload).json()
+        explicit = post_plan(API_BASE, {**payload, "feed_direction": "original"}).json()
+        assert original["feed_direction"] == "original"
+        assert explicit == original
+
+        # 调头坐标与原向互为镜像（调头后升序即原向区段的逆序）；再以原向请求恢复
+        length = body["roll_length"]
+        original_segments = original["segments"]
+        for index, segment in enumerate(body["segments"]):
+            source = original_segments[len(original_segments) - 1 - index]
+            mirror_start = length - source["end"]
+            mirror_end = length - source["start"]
+            assert (segment["start"], segment["end"]) == (mirror_start, mirror_end), (
+                f"第 {index} 段镜像坐标不符: {segment}"
+            )
+        restored = post_plan(API_BASE, {**payload, "feed_direction": "original"}).json()
+        assert restored["segments"] == original["segments"]
+
+    check("非对称缺陷调头坐标精确镜像且汇总不变、切回原向恢复",
+          check_reversed_direction)
+
+    def check_bad_direction():
+        for bad in ("sideways", "", None, 1):
+            resp = post_plan(API_BASE, {
+                "roll_length": 1000,
+                "defects": [{"start": 100, "end": 150}],
+                "feed_direction": bad,
+            })
+            assert resp.status_code == 422, f"{bad!r} 应被拒绝: {resp.status_code}"
+            detail = resp.json()["detail"]
+            assert detail["field"] == "feed_direction", detail
+            assert detail["row"] is None, detail
+            assert detail.get("message"), detail
+
+    check("不受支持的 feed_direction 返回字段明确的 422", check_bad_direction)
+
     def check_web_proxy():
         # 通过前端 nginx 代理提交，与直连 API 的结果必须一致（真实联调）
         payload = {"roll_length": 1000,
-                   "defects": [{"start": 100, "end": 150}]}
+                   "defects": [{"start": 100, "end": 150}],
+                   "feed_direction": "reversed"}
         direct = post_plan(API_BASE, payload).json()
         proxied = post_plan(WEB_BASE, payload)
         assert proxied.status_code == 200, f"代理请求失败: {proxied.status_code}"
         assert proxied.json()["segments"] == direct["segments"], "代理与直连结果不一致"
+        assert proxied.json()["feed_direction"] == "reversed"
 
     def check_web_page():
         resp = requests.get(f"{WEB_BASE}/", timeout=TIMEOUT)

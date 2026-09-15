@@ -27,32 +27,47 @@
 接口同时返回扩张后缺陷、合并后缺陷与区段明细，前端按比例 SVG 卷材条与区段
 表格均直接渲染该结果，保证图形与明细一致。
 
+### 原向 / 调头（feed_direction）
+
+卷材可能调头上机，此时标注坐标需要换成**机台进料端坐标**。结果区提供
+“原向 / 调头”切换，默认原向；切到调头时，前端携带**同一卷长与同一份缺陷**
+重新请求 `POST /api/plan`（`feed_direction: "reversed"`）。服务端先生成既有
+原向方案，再把扩张缺陷、合并缺陷与区段的每个区间 `[start, end]` 映射为
+`[卷长-end, 卷长-start]`，并按新坐标**升序**返回；段长度、类别与汇总值保持
+不变。响应回带 `feed_direction`，SVG、表格及卷材首/尾方向标识随同一坐标系
+翻转。方向值不受支持时接口返回字段明确的 422（`field: "feed_direction"`），
+页面清除旧图并提示重新选择；**省略** `feed_direction` 的旧客户端仍得到当前
+原向结果。
+
 ## 真实接口
 
 ### `POST /api/plan`
 
-请求体（数字或纯数字字符串均可）：
+请求体（数字或纯数字字符串均可；`feed_direction` 可省略，取值
+`"original"` 原向（默认）或 `"reversed"` 调头）：
 
 ```json
 {
   "roll_length": 1000,
-  "defects": [{ "start": 100, "end": 150 }, { "start": 300, "end": 320 }]
+  "defects": [{ "start": 100, "end": 150 }, { "start": 300, "end": 320 }],
+  "feed_direction": "original"
 }
 ```
 
-200 响应：
+200 响应（`feed_direction: "reversed"` 时坐标整体镜像并升序，长度/类别/汇总不变）：
 
 ```json
 {
   "roll_length": 1000,
+  "feed_direction": "reversed",
   "expand_mm": 15,
   "min_cuttable_mm": 200,
-  "expanded_defects": [{ "start": 85, "end": 165 }, { "start": 285, "end": 335 }],
-  "merged_defects": [{ "start": 85, "end": 165 }, { "start": 285, "end": 335 }],
+  "expanded_defects": [{ "start": 665, "end": 715 }, { "start": 835, "end": 915 }],
+  "merged_defects": [{ "start": 665, "end": 715 }, { "start": 835, "end": 915 }],
   "segments": [
-    { "start": 0, "end": 85, "length": 85, "category": "waste" },
-    { "start": 165, "end": 285, "length": 120, "category": "waste" },
-    { "start": 335, "end": 1000, "length": 665, "category": "cuttable" }
+    { "start": 0, "end": 665, "length": 665, "category": "cuttable" },
+    { "start": 715, "end": 835, "length": 120, "category": "waste" },
+    { "start": 915, "end": 1000, "length": 85, "category": "waste" }
   ],
   "summary": {
     "segment_count": 3,
@@ -73,6 +88,20 @@
     "row": 2,
     "field": "end",
     "message": "终点不能超过卷长 1000，收到 2000"
+  }
+}
+```
+
+`feed_direction` 给出但不受支持时同样返回 422，`field` 为
+`"feed_direction"`、`row` 为 `null`：
+
+```json
+{
+  "detail": {
+    "code": "invalid_input",
+    "row": null,
+    "field": "feed_direction",
+    "message": "进料方向仅支持 'original' / 'reversed'，收到 'sideways'"
   }
 }
 ```
@@ -122,23 +151,24 @@ docker compose run --rm verify
 
 verify 服务对真实运行的服务断言：空缺陷列表、15mm 扩张与边界截断、
 相交/包含/端点相接合并、补集分类（199mm 废边 / 200mm 可裁段）、卷长边界
-1 与 100000、整批拒绝与首个问题行、非整数与越界输入，以及前端 nginx 代理
-与直连 API 结果一致。
+1 与 100000、整批拒绝与首个问题行、非整数与越界输入、非对称缺陷调头后的
+精确镜像坐标与升序展示、非法方向 422 与省略字段的原向兼容，以及前端 nginx
+代理与直连 API 结果一致。
 
 ## 测试
 
 ```bash
-# 后端：pytest（58 例，算法单元 + 接口边界）
+# 后端：pytest（77 例，算法单元 + 接口边界，含调头镜像与方向校验）
 cd api
 pip install -r requirements-dev.txt
 python -m pytest tests/ -q
 
-# 前端：Vitest（8 例，组件渲染、比例 SVG、错误清除）
+# 前端：Vitest（12 例，组件渲染、比例 SVG、调头切换、错误清除）
 cd web
 npm install
 npm test
 
-# 端到端：Playwright（6 例，真实浏览器 + 真实 API）
+# 端到端：Playwright（8 例，真实浏览器 + 真实 API，含调头往返与非法方向）
 # 方式一：Compose 栈已启动（默认打 http://localhost:8080）
 docker compose up -d --build
 cd web && npx playwright install chromium && npm run e2e

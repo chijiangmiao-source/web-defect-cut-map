@@ -12,6 +12,7 @@ function mockFetchResponse(payload, { ok = true, status = 200 } = {}) {
 
 const PLAN_EMPTY = {
   roll_length: 1000,
+  feed_direction: "original",
   expand_mm: 15,
   min_cuttable_mm: 200,
   expanded_defects: [],
@@ -28,6 +29,7 @@ const PLAN_EMPTY = {
 
 const PLAN_WITH_DEFECT = {
   roll_length: 1000,
+  feed_direction: "original",
   expand_mm: 15,
   min_cuttable_mm: 200,
   expanded_defects: [{ start: 85, end: 165 }],
@@ -35,6 +37,26 @@ const PLAN_WITH_DEFECT = {
   segments: [
     { start: 0, end: 85, length: 85, category: "waste" },
     { start: 165, end: 1000, length: 835, category: "cuttable" },
+  ],
+  summary: {
+    segment_count: 2,
+    cuttable_count: 1,
+    waste_count: 1,
+    cuttable_length: 835,
+    waste_length: 85,
+  },
+};
+
+const PLAN_REVERSED = {
+  roll_length: 1000,
+  feed_direction: "reversed",
+  expand_mm: 15,
+  min_cuttable_mm: 200,
+  expanded_defects: [{ start: 835, end: 915 }],
+  merged_defects: [{ start: 835, end: 915 }],
+  segments: [
+    { start: 0, end: 835, length: 835, category: "cuttable" },
+    { start: 915, end: 1000, length: 85, category: "waste" },
   ],
   summary: {
     segment_count: 2,
@@ -108,11 +130,12 @@ describe("App", () => {
     expect(defectRects[0]).toHaveAttribute("x", "85");
     expect(defectRects[0]).toHaveAttribute("width", "80");
 
-    // 原始字符串原样发往服务端校验
+    // 原始字符串原样发往服务端校验，默认携带原向
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(body).toEqual({
       roll_length: "1000",
       defects: [{ start: "100", end: "150" }],
+      feed_direction: "original",
     });
   });
 
@@ -191,5 +214,147 @@ describe("App", () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("卷长");
     expect(alert).toHaveTextContent("1 到 100000");
+  });
+
+  it("默认原向，切换到调头时携带同一输入请求并翻转坐标与首尾标识", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(PLAN_WITH_DEFECT),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(PLAN_REVERSED),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "计算裁切方案" }));
+    await screen.findAllByTestId("segment-row");
+
+    // 默认原向：缺陷避让区在卷首一侧，左端为卷材头
+    expect(screen.getByTestId("roll-bar")).toHaveAttribute(
+      "data-direction",
+      "original"
+    );
+    expect(screen.getByTestId("feed-end-label")).toHaveTextContent("卷材头");
+    expect(screen.getByTestId("tail-end-label")).toHaveTextContent("卷材尾");
+    expect(screen.getByTestId("direction-original")).toBeChecked();
+
+    // 切到调头：携带同一卷长与缺陷，仅 feed_direction 改变
+    fireEvent.click(screen.getByTestId("direction-reversed"));
+
+    const rows = await screen.findAllByTestId("segment-row");
+    // 展示顺序翻转：调头后可裁段在卷首
+    expect(rows[0]).toHaveTextContent("可裁段");
+    expect(rows[0]).toHaveTextContent("835");
+    expect(rows[1]).toHaveTextContent("废边");
+
+    const requestBody = (index) =>
+      JSON.parse(fetchMock.mock.calls[index][1].body);
+    expect(requestBody(1).feed_direction).toBe("reversed");
+    expect(requestBody(1).roll_length).toBe(requestBody(0).roll_length);
+    expect(requestBody(1).defects).toEqual(requestBody(0).defects);
+
+    // SVG 按调头坐标重绘，首尾标识对调
+    expect(screen.getByTestId("roll-bar")).toHaveAttribute(
+      "data-direction",
+      "reversed"
+    );
+    const rects = screen.getAllByTestId("segment-rect");
+    expect(rects[0]).toHaveAttribute("x", "0");
+    expect(rects[0]).toHaveAttribute("width", "835");
+    expect(screen.getByTestId("defect-rect")).toHaveAttribute("x", "835");
+    expect(screen.getByTestId("feed-end-label")).toHaveTextContent("卷材尾");
+    expect(screen.getByTestId("tail-end-label")).toHaveTextContent("卷材头");
+  });
+
+  it("从调头切回原向时恢复原结果", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(PLAN_WITH_DEFECT),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(PLAN_REVERSED),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(PLAN_WITH_DEFECT),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "计算裁切方案" }));
+    await screen.findAllByTestId("segment-row");
+
+    fireEvent.click(screen.getByTestId("direction-reversed"));
+    await screen.findByText("机台进料端坐标（卷材调头）");
+
+    fireEvent.click(screen.getByTestId("direction-original"));
+    await screen.findByText("卷材原向坐标");
+
+    // 第三次请求携带 original
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body).feed_direction).toBe(
+      "original"
+    );
+    // 恢复原向结果：废边段回到卷首
+    const rows = screen.getAllByTestId("segment-row");
+    expect(rows[0]).toHaveTextContent("废边");
+    expect(rows[0]).toHaveTextContent("85");
+    expect(screen.getByTestId("roll-bar")).toHaveAttribute(
+      "data-direction",
+      "original"
+    );
+  });
+
+  it("方向值不受支持时清除旧图、提示重新选择并回到原向", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(PLAN_WITH_DEFECT),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 422,
+        json: () =>
+          Promise.resolve({
+            detail: {
+              code: "invalid_input",
+              row: null,
+              field: "feed_direction",
+              message: "进料方向仅支持 'original' / 'reversed'，收到 'sideways'",
+            },
+          }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "计算裁切方案" }));
+    await screen.findByTestId("roll-bar");
+
+    // 模拟用户选择后服务端判定方向非法
+    fireEvent.click(screen.getByTestId("direction-reversed"));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("进料方向");
+    expect(alert).toHaveTextContent("请重新选择");
+
+    // 旧图被清除
+    expect(screen.queryByTestId("roll-bar")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("segment-table")).not.toBeInTheDocument();
+    // 单选回到合法的原向
+    expect(screen.getByTestId("direction-original")).toBeChecked();
+    expect(screen.getByTestId("direction-reversed")).not.toBeChecked();
   });
 });
