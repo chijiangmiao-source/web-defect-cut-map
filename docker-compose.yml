@@ -22,18 +22,25 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost/"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
     ports:
       - "${WEB_PORT:-8080}:80"
 
-  # 一次性验收服务：对真实 API 与前端代理执行断言后退出
+  # 一次性验收服务：执行完即退出。若纳入默认启动，docker compose up --wait
+  # 会因其退出而误报整套服务启动失败，故用 profile 隔离，按需显式启动。
   verify:
+    profiles: ["verify"]
     build: ./verify
     image: slitting-planner-verify
     depends_on:
       api:
         condition: service_healthy
       web:
-        condition: service_started
+        condition: service_healthy
     environment:
       API_BASE_URL: http://api:8000
       WEB_BASE_URL: http://web

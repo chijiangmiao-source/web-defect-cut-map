@@ -92,6 +92,9 @@ verify（一次性容器）：对真实 api 与 web 代理执行验收断言后�
 # 启动前端与 API（默认 Web http://localhost:8080，API http://localhost:8000）
 docker compose up --build
 
+# 等待接口与页面均健康后再返回（常用于脚本 / CI）
+docker compose up --build --wait
+
 # 覆盖宿主端口
 WEB_PORT=9000 API_PORT=9001 docker compose up --build
 ```
@@ -100,11 +103,19 @@ WEB_PORT=9000 API_PORT=9001 docker compose up --build
   `/api` 由 nginx 代理至 API 容器；
 - `API_PORT`：API 宿主端口（默认 8000），供直接调用接口或调试。
 
+> 默认启动只包含 `api` 与 `web` 两个常驻服务，均带健康检查，`--wait`
+> 会等到接口与页面都健康。`verify` 是一次性容器，执行完即退出——若纳入
+> 默认启动，`up --wait` 会把这个已退出的容器误判为整套服务启动失败，
+> 因此它通过 `profiles: ["verify"]` 隔离，仅在验收时显式启动。
+
 ## 验收
 
 ```bash
 # 一次性验收：启动 api、web 与 verify，verify 全部断言通过后退出码为 0
-docker compose up --build --exit-code-from verify verify
+docker compose --profile verify up --build --exit-code-from verify verify
+
+# 或在栈已运行时单独执行一次验收
+docker compose run --rm verify
 ```
 
 verify 服务对真实运行的服务断言：空缺陷列表、15mm 扩张与边界截断、
